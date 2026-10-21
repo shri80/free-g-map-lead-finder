@@ -3,7 +3,7 @@
   "name": "Free G Map Lead Finder",
   "version": "1.0",
   "description": "Extract visible and hidden data from Google Maps left-panel business listings.",
-  "permissions": ["activeTab", "storage"],
+  "permissions": ["activeTab", "storage", "scripting"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": { "service_worker": "background.js" },
   "action": { "default_popup": "popup.html" },

@@ -1,5 +1,9 @@
+(() => {
 // Extracts business listings from the Google Maps left results panel.
 // "Visible" = text shown on the card. "Hidden" = data only present in attributes/URLs.
+
+// phone/website/address read from each listing's detail panel, keyed by listing url
+const details = new Map();
 
 function parseCard(a) {
   const card = a.closest("div.Nv2PK") || a.parentElement;
@@ -38,15 +42,16 @@ function parseCard(a) {
   const placeId = (href.match(/!19s(ChIJ[\w-]+)/) || [])[1] || "";
   const kgmid = decodeURIComponent((href.match(/!16s([^!?]+)/) || [])[1] || "");
 
+  const d = details.get(href) || {};
   return {
     name,
     rating: rm ? rm[1] : "",
     reviews: rm ? rm[2].replace(/,/g, "") : "",
     category: parts[0] || "",
-    address: parts.slice(1).join(", "),
+    address: parts.slice(1).join(", ") || d.address || "",
     hours,
-    phone,
-    website,
+    phone: phone || d.phone || "",
+    website: website || d.website || "",
     booking_link: booking,
     sponsored: /^Sponsored|Ad\b/.test(card.innerText.split("\n")[0]) ? "yes" : "",
     accessibility: access,
@@ -66,18 +71,16 @@ function extract() {
 }
 
 // ---- background scroll job (survives popup closing) ----
-const job = { running: false, stop: false, scrolls: 0, count: 0, reason: "" };
+const job = { running: false, stop: false, phase: "", scrolls: 0, count: 0, reason: "", dDone: 0, dTotal: 0 };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function runJob(maxScrolls, delayMs) {
-  const feed = document.querySelector('div[role="feed"]');
-  Object.assign(job, { running: true, stop: false, scrolls: 0, reason: "" });
-  if (!feed) { job.running = false; job.reason = "no results panel found"; return; }
+async function scrollFeed(feed, maxScrolls, delayMs) {
   let last = -1, stable = 0;
   while (!job.stop) {
     if (maxScrolls > 0 && job.scrolls >= maxScrolls) { job.reason = "reached max scrolls"; break; }
     feed.scrollTo(0, feed.scrollHeight);
     job.scrolls++;
-    await new Promise((r) => setTimeout(r, delayMs));
+    await sleep(delayMs);
     const n = feed.querySelectorAll("a.hfpxzc").length;
     job.count = n;
     if (/reached the end of the list/i.test(feed.innerText)) { job.reason = "end of list"; break; }
@@ -85,15 +88,75 @@ async function runJob(maxScrolls, delayMs) {
     last = n;
     if (stable >= 4) { job.reason = "no new results"; break; }
   }
+}
+
+// Some card layouts (photo cards) show no phone/website; those live in the detail panel.
+function readPanel(name) {
+  const h = [...document.querySelectorAll('div[role="main"] h1')].find((x) => x.textContent.trim() === name);
+  const panel = h && h.closest('div[role="main"]');
+  if (!panel) return null;
+  const site = panel.querySelector('a[data-item-id="authority"]');
+  const ph = panel.querySelector('button[data-item-id^="phone"]');
+  const ad = panel.querySelector('button[data-item-id="address"]');
+  const clean = (el) => ((el && el.getAttribute("aria-label")) || "").replace(/^[^:]+:\s*/, "").trim();
+  return { website: site ? site.href : "", phone: clean(ph), address: clean(ad) };
+}
+
+async function fetchDetails(feed) {
+  const todo = [...feed.querySelectorAll("a.hfpxzc")].filter((a) => {
+    if (details.has(a.href)) return false;
+    const r = parseCard(a);
+    return !r.website && !r.phone;
+  });
+  job.phase = "details";
+  job.dDone = 0; job.dTotal = todo.length;
+  // Safety net: if Maps doesn't handle our synthetic click itself, the browser would follow the
+  // link and reload the whole page (killing the run and the data). Block that default action.
+  const noNav = (e) => { if (!e.defaultPrevented && e.target.closest && e.target.closest("a.hfpxzc")) e.preventDefault(); };
+  window.addEventListener("click", noNav, false);
+  try { await openEach(todo); } finally { window.removeEventListener("click", noNav, false); }
+  const close = document.querySelector('div[role="main"] button[aria-label="Close"]');
+  if (close) close.click();                                 // back to the plain results list
+}
+
+async function openEach(todo) {
+  for (const a of todo) {
+    if (job.stop) break;
+    const name = a.getAttribute("aria-label") || "";
+    a.scrollIntoView({ block: "center" });
+    a.click();
+    let got = null, seenAt = 0;
+    for (let t = 0; t < 30 && !job.stop; t++) {            // up to ~6 s for the panel
+      await sleep(200);
+      const r = readPanel(name);
+      if (!r) continue;
+      got = r;
+      if (r.website || r.phone) break;
+      seenAt = seenAt || t;
+      if (t - seenAt >= 5) break;                          // panel open, nothing to read: give up
+    }
+    if (got) details.set(a.href, got);
+    job.dDone++;
+  }
+}
+
+async function runJob(maxScrolls, delayMs, wantDetails) {
+  const feed = document.querySelector('div[role="feed"]');
+  Object.assign(job, { running: true, stop: false, phase: "scroll", scrolls: 0, reason: "", dDone: 0, dTotal: 0 });
+  if (!feed) { job.running = false; job.phase = ""; job.reason = "no results panel found"; return; }
+  await scrollFeed(feed, maxScrolls, delayMs);
+  if (wantDetails && !job.stop) await fetchDetails(feed);
   if (job.stop) job.reason = "stopped";
+  job.phase = "";
   job.running = false;
 }
 
 chrome.runtime.onMessage.addListener((msg, _s, send) => {
-  if (msg.type === "start") { runJob(msg.maxScrolls, msg.delayMs || 1500); send({ ok: true }); }
+  if (msg.type === "start") { runJob(msg.maxScrolls, msg.delayMs || 1500, msg.details); send({ ok: true }); }
   else if (msg.type === "stop") { job.stop = true; send({ ok: true }); }
   else if (msg.type === "status") {
     job.count = document.querySelectorAll('div[role="feed"] a.hfpxzc').length;
     send({ ...job });
   } else if (msg.type === "extract") send({ rows: extract() });
 });
+})();

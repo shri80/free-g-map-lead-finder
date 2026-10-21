@@ -18,11 +18,17 @@ const NEED = "Open a Google Maps search results page and reload it once.";
 
 let rows = [];
 let sortKey = "", sortDir = 1;
-let timer = null, etimer = null;
+let timer = null, etimer = null, lastCount = -1;
 
+// If the page was opened before the extension was installed/reloaded it has no live content
+// script; inject it on demand instead of making the user refresh the Maps tab.
 const tabMsg = async (m) => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return chrome.tabs.sendMessage(tab.id, m);
+  try { return await chrome.tabs.sendMessage(tab.id, m); }
+  catch (e) {
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
+    return chrome.tabs.sendMessage(tab.id, m);
+  }
 };
 const bg = (m) => chrome.runtime.sendMessage(m);
 const setBar = (id, pct, busy) => {
@@ -32,29 +38,67 @@ const setBar = (id, pct, busy) => {
 
 // ---------- step 1: collect ----------
 async function extractNow() {
-  try { rows = (await tabMsg({ type: "extract" })).rows; } catch (e) { $("status").textContent = NEED; return; }
+  let fresh;
+  try { fresh = (await tabMsg({ type: "extract" })).rows; } catch (e) { $("status").textContent = NEED; return; }
+  if (fresh.length || !rows.length) rows = fresh;   // never wipe the table if the page lost its list
   $("csv").disabled = $("copy").disabled = $("enrich").disabled = !rows.length;
   await mergeEnrich();
 }
 
+const START_LABEL = "\u25B6 Start";
+function setStatus(text, cls) {
+  $("status").textContent = text;
+  $("status").className = "msg" + (cls ? " " + cls : "");
+}
+
+let polling = false;
 async function poll() {
+  if (polling) return;
+  polling = true;
+  try { return await pollOnce(); } finally { polling = false; }
+}
+async function pollOnce() {
   let s;
-  try { s = await tabMsg({ type: "status" }); } catch (e) { $("status").textContent = NEED; return; }
+  try { s = await tabMsg({ type: "status" }); } catch (e) { setStatus(NEED); return; }
   $("start").disabled = s.running;
+  $("start").textContent = s.running ? "Running\u2026" : START_LABEL;
   $("stop").disabled = !s.running;
   const max = +$("max").value || 0;
-  setBar("bar1", max ? (s.scrolls / max) * 100 : 0, s.running && !max);
-  $("status").textContent = s.running
-    ? `Scrolling… ${s.scrolls}${max ? "/" + max : ""} scrolls · ${s.count} listings`
-    : `${s.count} listings loaded` + (s.reason ? ` · ${s.reason} (${s.scrolls} scrolls)` : "");
-  if (!s.running && timer) { clearInterval(timer); timer = null; setBar("bar1", 100); await extractNow(); }
+  // always visible while running: indeterminate when unlimited, else at least a small sliver
+  setBar("bar1", max ? Math.max(8, (s.scrolls / max) * 100) : 0, s.running && !max);
+  if (s.running) {
+    if (s.count + ":" + s.dDone !== lastCount) { lastCount = s.count + ":" + s.dDone; await extractNow(); }  // live table
+    if (s.phase === "details") {
+      setBar("bar1", s.dTotal ? Math.max(8, (s.dDone / s.dTotal) * 100) : 8, false);
+      setStatus(`No phone/website on cards \u2014 reading details\u2026 ${s.dDone}/${s.dTotal}`, "running");
+    } else setStatus(`Scrolling\u2026 ${s.scrolls}${max ? "/" + max : ""} scrolls \u00B7 ${s.count} listings`, "running");
+  } else if (timer) {
+    clearInterval(timer); timer = null; setBar("bar1", 100);
+    await extractNow();
+    setStatus(s.reason === "stopped"
+      ? `\u25A0 Stopped \u2014 ${s.count} listings collected`
+      : `\u2714 Done \u2014 ${s.count} listings collected` + (s.reason ? ` (${s.reason})` : ""), "done");
+  } else {
+    setStatus(`${s.count} listings loaded` + (s.reason ? ` \u00B7 ${s.reason} (${s.scrolls} scrolls)` : ""));
+  }
   return s;
 }
 
 $("start").onclick = async () => {
-  try { await tabMsg({ type: "start", maxScrolls: +$("max").value || 0, delayMs: +$("delay").value || 1500 }); }
-  catch (e) { $("status").textContent = NEED; return; }
-  timer = setInterval(poll, 700);
+  if (timer) return;
+  lastCount = -1;
+  $("start").disabled = true;
+  $("start").textContent = "Running\u2026";
+  $("stop").disabled = false;
+  setBar("bar1", 8, !(+$("max").value));
+  setStatus("Starting\u2026 scrolling the results list", "running");
+  try { await tabMsg({ type: "start", maxScrolls: +$("max").value || 0, delayMs: +$("delay").value || 1500, details: $("details").checked }); }
+  catch (e) {
+    console.error(e);
+    $("start").disabled = false; $("start").textContent = START_LABEL; $("stop").disabled = true;
+    setBar("bar1", 0, false); setStatus(NEED + " (" + e.message + ")"); return;
+  }
+  timer = setInterval(poll, 500);
   poll();
 };
 $("stop").onclick = () => tabMsg({ type: "stop" });
