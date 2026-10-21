@@ -3,6 +3,15 @@ const HIDDEN = new Set([
   "hex_feature_id", "knowledge_graph_id", "maps_url", "cid_url",
   "emails", "site_phones", "facebook", "linkedin", "instagram", "twitter", "contact_page", "enrich_status",
 ]);
+// columns behind the "IDs, coords & URLs" toggle
+const TECH = new Set(["booking_link", "accessibility", "latitude", "longitude", "place_id", "cid",
+  "hex_feature_id", "knowledge_graph_id", "maps_url", "cid_url", "contact_page", "enrich_status"]);
+const ORDER = ["name", "rating", "reviews", "category", "address", "phone", "emails", "hours", "site_phones",
+  "facebook", "linkedin", "instagram", "twitter", "website", "sponsored"];
+const orderedCols = (row) => {
+  const keys = Object.keys(row);
+  return [...ORDER.filter((k) => keys.includes(k)), ...keys.filter((k) => !ORDER.includes(k))];
+};
 const LINKS = new Set(["website", "booking_link", "maps_url", "cid_url", "facebook", "linkedin", "instagram", "twitter", "contact_page"]);
 const $ = (id) => document.getElementById(id);
 const NEED = "Open a Google Maps search results page and reload it once.";
@@ -131,7 +140,7 @@ function render() {
   $("empty").style.display = rows.length ? "none" : "block";
   if (!rows.length) return;
   const showHid = $("hidcols").checked;
-  const cols = Object.keys(rows[0]).filter((c) => showHid || !HIDDEN.has(c));
+  const cols = orderedCols(rows[0]).filter((c) => showHid || !TECH.has(c));
   const head = t.createTHead().insertRow();
   cols.forEach((c) => {
     const th = document.createElement("th");
@@ -150,7 +159,7 @@ function render() {
 
 // ---------- export ----------
 function toCSV(list) {
-  const cols = Object.keys(list[0]);
+  const cols = orderedCols(list[0]);
   const esc = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
   return [cols.join(","), ...list.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\n");
 }

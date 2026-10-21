@@ -13,13 +13,14 @@
             --accent: #8ab4f8; --accent-d: #aecbfa; --hid: #3a3220; --hid-t: #f2c660; --ok: #81c995; --bad: #f28b82; }
   }
   * { box-sizing: border-box; }
-  body { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; width: 820px; margin: 0;
-         background: var(--bg); color: var(--text); }
+  html { height: 600px; }
+  body { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; width: 780px; height: 600px; margin: 0;
+         background: var(--bg); color: var(--text); display: flex; flex-direction: column; overflow: hidden; }
   header { padding: 12px 16px; background: var(--accent); color: #fff; display: flex; align-items: baseline; gap: 10px; }
   @media (prefers-color-scheme: dark) { header { color: #10131a; } }
   header h1 { font-size: 15px; margin: 0; }
   header span { opacity: .85; font-size: 12px; }
-  main { padding: 12px 16px 16px; }
+  main { padding: 10px 14px 8px; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
   .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 8px; }
@@ -41,10 +42,10 @@
   .bar.busy i { width: 35% !important; animation: slide 1.1s infinite ease-in-out; }
   @keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
   .msg { color: var(--muted); font-size: 12px; min-height: 16px; }
-  .toolbar { display: flex; align-items: center; gap: 8px; margin: 12px 0 8px; flex-wrap: wrap; }
-  .toolbar input[type=search] { flex: 1; min-width: 160px; }
+  .toolbar { display: flex; align-items: center; gap: 8px; margin: 10px 0 8px; flex-wrap: wrap; }
+  .toolbar input[type=search] { flex: 1; min-width: 120px; }
   .count { color: var(--muted); }
-  .wrap { max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  .wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
   table { border-collapse: separate; border-spacing: 0; white-space: nowrap; width: 100%; }
   th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--line); max-width: 240px;
            overflow: hidden; text-overflow: ellipsis; }
@@ -59,7 +60,7 @@
   .pill { padding: 1px 7px; border-radius: 10px; font-size: 11px; background: var(--bg); }
   .pill.ok { color: var(--ok); } .pill.bad { color: var(--bad); }
   .empty { padding: 28px; text-align: center; color: var(--muted); }
-  footer { margin-top: 8px; font-size: 11px; color: var(--muted); }
+  footer { margin-top: 6px; font-size: 11px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -94,7 +95,7 @@
 
     <div class="toolbar">
       <input type="search" id="q" placeholder="Filter by name, category, phone, email…">
-      <label class="f"><input type="checkbox" id="hidcols" checked> Hidden-data columns</label>
+      <label class="f"><input type="checkbox" id="hidcols"> IDs, coords &amp; URLs</label>
       <label class="f"><input type="checkbox" id="onlyEmail"> Only with email</label>
       <span class="count" id="count"></span>
       <button id="csv" disabled>Download CSV</button>
@@ -102,7 +103,7 @@
     </div>
 
     <div class="wrap"><table id="t"></table><div class="empty" id="empty">No data yet.</div></div>
-    <footer>Orange headers = data not visible on the Maps card (coordinates, IDs, links, website contacts). Click a header to sort.</footer>
+    <footer>Orange headers = data not visible on the Maps card. Click a header to sort.</footer>
   </main>
   <script src="popup.js"></script>
 </body>

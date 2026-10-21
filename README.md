@@ -4,6 +4,8 @@ Chrome extension that reads the business listings in the left panel of a Google 
 (visible and hidden fields), and optionally reads each business's own website for emails,
 phone numbers and Facebook / LinkedIn / Instagram / X links. Export to CSV.
 
+![Free G Map Lead Finder popup showing listings with emails and phone numbers](docs/screenshot.png)
+
 ## Install (no store needed)
 1. Download and unzip `free-g-map-lead-finder.zip` to a folder you will keep (do not delete it).
 2. Open `chrome://extensions` and turn on **Developer mode** (top right).
